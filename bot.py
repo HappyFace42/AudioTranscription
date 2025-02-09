@@ -86,12 +86,12 @@ async def transcribe_audio(file_path):
         return None
 
 @app.route("/webhook", methods=["POST"])
-def webhook():
+async def webhook():
     """Receives webhook updates from Telegram."""
     try:
         update = Update.de_json(request.get_json(), telegram_app.bot)
         logger.info(f"📬 Received Webhook Update: {update}")
-        telegram_app.process_update(update)
+        await telegram_app.process_update(update)  # 🔥 FIXED: Now using `await`
         return "OK"
     except Exception as e:
         logger.error(f"❌ Webhook processing error: {e}")
