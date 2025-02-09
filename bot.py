@@ -78,17 +78,17 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.remove(audio_path)
 
 
-def setup_webhook():
-    """Registers the webhook with Telegram."""
-    webhook_url = f"{WEBHOOK_URL}/webhook"
-    response = requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-        json={"url": webhook_url},
-    )
-    if response.status_code == 200:
-        logger.info("✅ Webhook set successfully.")
-    else:
-        logger.error(f"❌ Failed to set webhook: {response.text}")
+# def setup_webhook():
+#    """Registers the webhook with Telegram."""
+#    webhook_url = f"{WEBHOOK_URL}/webhook"
+#    response = requests.post(
+#        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+#        json={"url": webhook_url},
+#    )
+#    if response.status_code == 200:
+#        logger.info("✅ Webhook set successfully.")
+#    else:
+#        logger.error(f"❌ Failed to set webhook: {response.text}")
 
 
 def main():
