@@ -1,152 +1,172 @@
 import os
 import logging
 import asyncio
-import requests
-import tempfile
-import subprocess
+import uuid
+import yt_dlp
+import openai
 from flask import Flask, request
-from pydub import AudioSegment
 from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from notion_client import Client
 
-# 📌 Load environment variables
+# ✅ Load Environment Variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 NOTION_API_KEY = os.getenv("NOTION_API_KEY")
 NOTION_PAGE_ID = os.getenv("NOTION_PAGE_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# 🚨 Debug Missing ENV Vars
+# ✅ Logging Configuration
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# ✅ Flask App for Webhook
+app = Flask(__name__)
+
+# ✅ Initialize Telegram Bot
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+# ✅ Initialize Notion Client
+notion = Client(auth=NOTION_API_KEY)
+
+# ✅ Validate API Keys
 if not TELEGRAM_BOT_TOKEN:
     logging.error("❌ TELEGRAM_BOT_TOKEN is missing!")
     exit(1)
-if not NOTION_API_KEY:
-    logging.error("❌ NOTION_API_KEY is missing!")
+if not NOTION_API_KEY or not NOTION_PAGE_ID:
+    logging.error("❌ Notion API credentials are missing!")
     exit(1)
-if not NOTION_PAGE_ID:
-    logging.error("❌ NOTION_PAGE_ID is missing!")
+if not OPENAI_API_KEY:
+    logging.error("❌ OpenAI API Key is missing!")
     exit(1)
 
-# ✅ Initialize APIs
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
-notion = Client(auth=NOTION_API_KEY)
-app = Flask(__name__)
-
-# 🚀 Initialize Telegram Bot
-telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-
-@app.route("/webhook", methods=["POST"])
-async def webhook():
-    """Handle incoming Telegram messages"""
-    update = Update.de_json(request.get_json(), bot)
-    logging.info(f"📬 Received Webhook Update: {update}")
-
-    # Process update
-    await telegram_app.process_update(update)
-    return "OK", 200
-
-
-async def start(update: Update, context):
-    """Start command handler"""
-    await update.message.reply_text("🤖 Send me a podcast link to transcribe it!")
-
-
-async def handle_message(update: Update, context):
-    """Handle incoming messages"""
-    message_text = update.message.text.strip()
-    chat_id = update.message.chat_id
-    logging.info(f"📥 Received message: {message_text}")
-
-    if message_text.startswith("http"):
-        await update.message.reply_text("🎙️ Processing podcast... Please wait!")
-        transcript = await process_podcast(message_text)
-        if transcript:
-            notion_url = store_in_notion(transcript)
-            await update.message.reply_text(f"✅ Transcription saved: {notion_url}")
-        else:
-            await update.message.reply_text("❌ Failed to process podcast!")
-    else:
-        await update.message.reply_text("❌ Please send a valid podcast URL!")
-
-
-async def process_podcast(url):
-    """Download & Transcribe the Podcast"""
+# ✅ Download Audio Function
+async def download_audio(url: str):
+    """Downloads audio from the given URL and returns the file path."""
     try:
-        logging.info(f"⬇️ Downloading: {url}")
-        with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as temp_audio:
-            response = requests.get(url)
-            if response.status_code != 200:
-                logging.error("❌ Failed to download podcast")
-                return None
+        logging.info(f"📥 Downloading audio from: {url}")
 
-            temp_audio.write(response.content)
-            temp_audio.flush()
+        output_file = f"downloads/{uuid.uuid4()}.mp3"
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": output_file,
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
+        }
 
-            # 🔊 Convert to WAV if needed
-            audio = AudioSegment.from_file(temp_audio.name)
-            wav_path = temp_audio.name.replace(".mp3", ".wav")
-            audio.export(wav_path, format="wav")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-            # �� Transcribe using Whisper
-            transcript = transcribe_audio(wav_path)
-            return transcript
+        logging.info(f"✅ Audio downloaded: {output_file}")
+        return output_file
 
     except Exception as e:
-        logging.error(f"❌ Error processing podcast: {e}")
+        logging.error(f"❌ Failed to download audio: {e}")
         return None
 
-
-def transcribe_audio(audio_path):
-    """Use Whisper AI to transcribe audio"""
+# ✅ Transcribe Audio Function
+async def transcribe_audio(audio_file: str):
+    """Transcribes audio using OpenAI Whisper API."""
     try:
-        logging.info(f"📝 Transcribing: {audio_path}")
-        result = subprocess.run(
-            ["whisper", audio_path, "--model", "small"],
-            capture_output=True,
-            text=True
-        )
-        transcript = result.stdout.strip()
-        return transcript
+        logging.info("🎙️ Transcribing audio...")
+
+        openai.api_key = OPENAI_API_KEY
+        with open(audio_file, "rb") as audio:
+            transcript = openai.Audio.transcribe("whisper-1", audio)
+
+        logging.info("✅ Transcription complete")
+        return transcript["text"]
+
     except Exception as e:
         logging.error(f"❌ Transcription failed: {e}")
         return None
 
-
-def store_in_notion(text):
-    """Store transcript in Notion"""
+# ✅ Store in Notion
+async def store_in_notion(text: str):
+    """Stores the transcribed text in Notion."""
     try:
-        logging.info("📝 Storing transcription in Notion...")
+        logging.info("📝 Storing transcript in Notion...")
 
-        # 🔥 Ensure text is within Notion limits
-        MAX_CHUNK_SIZE = 2000  # Notion has text block limits
-        chunks = [text[i:i + MAX_CHUNK_SIZE] for i in range(0, len(text), MAX_CHUNK_SIZE)]
+        # Split into smaller chunks (Notion limits text block size)
+        chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
 
-        notion.blocks.children.append(NOTION_PAGE_ID, children=[
-            {"object": "block", "type": "paragraph", "paragraph": {"text": [{"type": "text", "text": {"content": chunk}}]}}
-            for chunk in chunks
-        ])
+        for chunk in chunks:
+            notion.pages.create(
+                parent={"page_id": NOTION_PAGE_ID},
+                properties={"title": {"title": [{"text": {"content": "Podcast Transcript"}}]}},
+                children=[{"object": "block", "type": "paragraph", "paragraph": {"text": [{"text": {"content": chunk}}]}}]
+            )
 
-        return f"https://notion.so/{NOTION_PAGE_ID}"
+        logging.info("✅ Transcript saved in Notion")
+        return True
 
     except Exception as e:
-        logging.error(f"❌ Failed to save transcript in Notion: {e}")
-        return None
+        logging.error(f"❌ Failed to save in Notion: {e}")
+        return False
 
+# ✅ Process Podcast Function
+async def process_podcast(url: str, chat_id: int, context: CallbackContext):
+    """Handles downloading, transcribing, and storing a podcast."""
+    try:
+        audio_file = await download_audio(url)
+        if not audio_file:
+            await context.bot.send_message(chat_id, "❌ Failed to download audio.")
+            return
 
-async def setup_bot():
-    """Initialize the bot and set the webhook."""
-    global telegram_app
+        transcript = await transcribe_audio(audio_file)
+        if not transcript:
+            await context.bot.send_message(chat_id, "❌ Failed to transcribe audio.")
+            return
 
-    # ✅ Initialize the bot properly
-    await telegram_app.initialize()
+        notion_result = await store_in_notion(transcript)
+        if notion_result:
+            await context.bot.send_message(chat_id, "✅ Transcript saved in Notion!")
+        else:
+            await context.bot.send_message(chat_id, "❌ Failed to save transcript.")
 
-    # ✅ Use bot.set_webhook() instead of Application.set_webhook()
+    except Exception as e:
+        logging.error(f"❌ Error processing podcast: {e}")
+        await context.bot.send_message(chat_id, "❌ An error occurred during processing.")
+
+# ✅ Telegram Message Handler
+async def handle_message(update: Update, context: CallbackContext) -> None:
+    """Handles incoming messages and triggers processing."""
+    message_text = update.message.text
+    chat_id = update.message.chat_id
+
+    logging.info(f"📥 Received message: {message_text}")
+
+    if message_text.startswith("http"):
+        await context.bot.send_message(chat_id, "🎙️ Processing podcast...")
+        await process_podcast(message_text, chat_id, context)
+    else:
+        await context.bot.send_message(chat_id, "❌ Invalid URL. Please send a valid podcast link.")
+
+# ✅ Webhook Route for Telegram
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """Receives Telegram updates and processes them asynchronously."""
+    try:
+        update = Update.de_json(request.get_json(), bot)
+        asyncio.run(handle_message(update, telegram_app.bot))
+        return "OK", 200
+    except Exception as e:
+        logging.error(f"❌ Webhook processing error: {e}")
+        return "Internal Server Error", 500
+
+# ✅ Setup Webhook
+async def setup_webhook():
+    """Sets up Telegram webhook on deployment."""
     webhook_url = "https://audiotranscription-production.up.railway.app/webhook"
-    await telegram_app.bot.set_webhook(url=webhook_url)
-    
-    print(f"✅ Webhook set successfully: {webhook_url}")
+    await telegram_app.bot.setWebhook(webhook_url)
+    logging.info(f"✅ Webhook set successfully: {webhook_url}")
 
+# ✅ Initialize Bot
+async def setup_bot():
+    """Initializes bot and sets up webhook."""
+    await telegram_app.initialize()
+    await setup_webhook()
+    await telegram_app.start()
+    await telegram_app.run_webhook(port=8080)
+
+# ✅ Start Bot
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(setup_bot())
-    app.run(host="0.0.0.0", port=8080)

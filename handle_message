@@ -1,0 +1,13 @@
+async def handle_message(update: Update, context: CallbackContext) -> None:
+    """Handles incoming messages and triggers processing."""
+    message_text = update.message.text
+    chat_id = update.message.chat_id
+
+    logging.info(f"📥 Received message: {message_text}")
+
+    # ✅ Check if it's a valid URL before processing
+    if message_text.startswith("http"):
+        await context.bot.send_message(chat_id=chat_id, text="🎙️ Processing podcast...")
+        await process_podcast(message_text, chat_id, context)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Invalid URL. Please send a valid podcast link.")
