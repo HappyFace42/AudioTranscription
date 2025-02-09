@@ -1,12 +1,11 @@
 import os
 import logging
 import requests
+import asyncio
 
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 # ✅ Enable logging
 logging.basicConfig(
@@ -24,7 +23,7 @@ if not TELEGRAM_TOKEN:
 # ✅ Initialize Flask app
 app = Flask(__name__)
 
-# ✅ Initialize Telegram Bot
+# ✅ Initialize Telegram Application (async-ready)
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 
@@ -69,6 +68,9 @@ async def webhook():
         logger.info(f"📬 Received Webhook Update: {update_data}")
 
         update = Update.de_json(update_data, telegram_app.bot)
+        
+        # ✅ Properly initialize bot before processing update
+        await telegram_app.initialize()
         await telegram_app.process_update(update)
         
         return "OK", 200
@@ -95,13 +97,13 @@ async def main():
     else:
         logger.error(f"❌ Failed to set webhook: {response.text}")
 
+    # ✅ Ensure application is initialized before processing requests
+    await telegram_app.initialize()
     logger.info("🚀 Bot is running with webhook on port 8080")
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    # ✅ Ensure bot starts with webhook
+    # ✅ Start the bot asynchronously
     asyncio.run(main())
 
     # ✅ Start Flask app
