@@ -2,55 +2,11 @@ import os
 import logging
 import requests
 from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
-from flask import Flask
-from flask import request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask
-from flask import request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
-from flask import Flask, request
-from flask import Response
-from flask import jsonify
-from flask import current_app
 
-# 🚀 **Logging Setup**
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+# ✅ **Logging Setup**
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ✅ **Environment Variables**
@@ -58,15 +14,15 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = "https://audiotranscription-production.up.railway.app/webhook"
 PORT = int(os.getenv("PORT", 8080))
 
-# 🚀 **Flask Webhook Server**
+# ✅ **Initialize Flask**
 app = Flask(__name__)
 
-# ✅ **Initialize Telegram Bot**
+# ✅ **Initialize Telegram Application (FIXED)**
 telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+telegram_app.initialize()  # 🔥 Fix: Ensure the bot is initialized
 
-# 🔄 **Message Handler**
+# ✅ **Message Handler**
 async def handle_message(update: Update, context: CallbackContext) -> None:
-    """Processes incoming messages from Telegram."""
     text = update.message.text
     chat_id = update.message.chat_id
 
@@ -78,12 +34,11 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("🤖 Send me a podcast link!")
 
-# ✅ **Function to process podcast links**
+# ✅ **Process Podcast Link**
 def process_podcast_link(url, chat_id):
-    """Placeholder function to handle podcast processing (modify as needed)."""
+    """Process podcast and send a response"""
     logger.info(f"🎙️ Processing podcast: {url}")
 
-    # Example response (Replace with actual processing)
     response_message = f"✅ Processed Podcast: {url}"
     
     requests.post(
@@ -91,23 +46,25 @@ def process_podcast_link(url, chat_id):
         json={"chat_id": chat_id, "text": response_message},
     )
 
-# ✅ **Webhook Handler (FIXED)**
+# ✅ **Webhook Route (FIXED)**
 @app.route("/webhook", methods=["POST"])
-def webhook():
-    """Receives updates from Telegram and forwards them to the bot."""
+async def webhook():
+    """Receives updates from Telegram"""
     update = Update.de_json(request.get_json(), telegram_app.bot)
-    
-    # ✅ FIX: Convert async to sync
-    from flask import current_app
-    current_app.ensure_sync(telegram_app.process_update)(update)
-    
+
+    logger.info(f"📬 Received Webhook Update: {update}")
+
+    await telegram_app.process_update(update)  # 🔥 Fix: Ensure async processing
+
     return "OK", 200
 
-# ✅ **Set Webhook Function**
+# ✅ **Set Webhook**
 def set_webhook():
-    """Sets the Telegram bot webhook."""
-    webhook_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook"
-    response = requests.post(webhook_url, json={"url": WEBHOOK_URL})
+    """Set the Telegram webhook"""
+    response = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
+        json={"url": WEBHOOK_URL},
+    )
     
     if response.ok:
         logger.info(f"✅ Webhook set successfully: {WEBHOOK_URL}")
@@ -116,7 +73,7 @@ def set_webhook():
 
 # ✅ **Main Function**
 if __name__ == "__main__":
-    set_webhook()  # Ensure webhook is set
+    set_webhook()  # Set webhook on start
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     logger.info(f"🚀 Bot is running with webhook on port {PORT}")
