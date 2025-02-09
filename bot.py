@@ -13,7 +13,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("audiotranscription-production.up.railway.app")  # e.g., https://yourdomain.com/webhook
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-PORT = int(os.getenv("PORT", 5000))  # Default to 8080
+PORT = int(os.getenv("PORT", 8080))  # Default to 8080
 
 # Logging setup
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
