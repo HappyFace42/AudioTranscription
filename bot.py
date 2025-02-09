@@ -42,8 +42,10 @@ async def handle_message(update: Update, context):
     logger.info(f"📥 Received message: {text}")
 
     if text.startswith("http"):
-        await context.bot.send_message(chat_id=chat_id, text="🎙️ Processing podcast: " + text)
-        # TODO: Add podcast download & transcription logic here
+        try:
+            await context.bot.send_message(chat_id=chat_id, text="🎙️ Processing podcast: " + text)
+        except Exception as e:
+            logger.error(f"❌ Failed to send message: {e}")
     else:
         await context.bot.send_message(chat_id=chat_id, text="❌ Invalid link! Please send a valid podcast URL.")
 
