@@ -91,7 +91,12 @@ async def webhook():
     try:
         update = Update.de_json(request.get_json(), telegram_app.bot)
         logger.info(f"📬 Received Webhook Update: {update}")
-        await telegram_app.process_update(update)  # 🔥 FIXED: Now using `await`
+
+        # 🔥 Ensure the bot is initialized before processing updates
+        if not telegram_app.running:
+            await telegram_app.initialize()
+
+        await telegram_app.process_update(update)  # ✅ Now properly awaited
         return "OK"
     except Exception as e:
         logger.error(f"❌ Webhook processing error: {e}")
