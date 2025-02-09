@@ -20,9 +20,13 @@ telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 @app.route("/webhook", methods=["POST"])
 async def webhook():
     """Process incoming Telegram messages via webhook"""
-    update = Update.de_json(request.get_json(), telegram_app.bot)
-    await telegram_app.process_update(update)
-    return "OK", 200
+    try:
+        update = Update.de_json(request.get_json(), telegram_app.bot)
+        await telegram_app.process_update(update)
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"❌ Webhook processing error: {e}")
+        return "Internal Server Error", 500
 
 # Register handlers
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -40,6 +44,7 @@ async def set_webhook():
 async def start_bot():
     """Start the bot using webhook mode"""
     await set_webhook()
+    logger.info("🚀 Bot is running with webhook on port 8080")
     await telegram_app.run_webhook(port=8080)
 
 if __name__ == "__main__":
@@ -50,5 +55,11 @@ if __name__ == "__main__":
         logger.info("🔄 Event loop already running, scheduling bot...")
         loop.create_task(start_bot())
     except RuntimeError:
-        logger.info("🆕 No running event loop, starting new one...")
-        asyncio.run(start_bot())
+        logger.info("🆕 No running event loop, creating a new one...")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(start_bot())
+
+    # Start Flask server (run in a separate thread to avoid async conflicts)
+    from threading import Thread
+    Thread(target=lambda: app.run(host="0.0.0.0", port=8080)).start()
