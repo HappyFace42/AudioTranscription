@@ -165,8 +165,11 @@ async def setup_bot():
     await telegram_app.initialize()
     await setup_webhook()
     await telegram_app.start()
-    await telegram_app.run_webhook(port=8080)
+    await telegram_app.run_webhook(listen="0.0.0.0", port=8080, url_path="webhook")
 
 # ✅ Start Bot
 if __name__ == "__main__":
-    asyncio.run(setup_bot())
+
+loop = asyncio.get_event_loop()
+loop.create_task(setup_bot())
+loop.run_forever()
