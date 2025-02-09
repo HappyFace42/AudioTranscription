@@ -25,3 +25,4 @@ typing_extensions==4.12.2
 urllib3==2.3.0
 yt-dlp==2025.1.26
 flask[async]
+notion-client
