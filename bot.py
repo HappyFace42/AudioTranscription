@@ -1,62 +1,83 @@
-import logging
 import os
+import logging
+import asyncio
 import requests
-import openai
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
-from extract_audio import extract_audio_url, download_audio
-from transcriber import transcribe_audio
-from notion_helper import create_notion_page
-from config import TELEGRAM_BOT_TOKEN, DOWNLOADS_FOLDER
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from pydub import AudioSegment
+from pydub.playback import play
+from yt_dlp import YoutubeDL
+from openai import OpenAI
+from dotenv import load_dotenv
 
-WEBHOOK_URL = "audiotranscription-production.up.railway.app"
+# Load environment variables
+load_dotenv()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# ✅ Logging Configuration
-logging.basicConfig(level=logging.INFO)
+# Set up logging
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# ✅ Initialize Telegram Bot
+# Initialize OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Initialize Telegram bot
 app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-async def start(update: Update, context: CallbackContext) -> None:
-    """Handles /start command."""
-    await update.message.reply_text("👋 Send me a podcast link, and I'll transcribe it for you!")
 
-async def handle_message(update: Update, context: CallbackContext) -> None:
-    """Handles incoming messages."""
-    url = update.message.text
-    logger.info(f"📥 Received link: {url}")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start command handler"""
+    await update.message.reply_text("👋 Hello! Send me a podcast link, and I'll transcribe it for you!")
 
-    audio_url, podcast_title = extract_audio_url(url)
+
+async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles receiving a link, downloading, and transcribing audio."""
+    url = update.message.text.strip()
+    await update.message.reply_text("🔍 Processing link...")
+
+    # Extract audio URL using yt-dlp
+    ydl_opts = {"format": "bestaudio", "quiet": True}
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        audio_url = info.get("url")
+
     if not audio_url:
-        await update.message.reply_text("❌ Failed to extract audio. Please try another link.")
+        await update.message.reply_text("❌ Failed to extract audio.")
         return
 
     await update.message.reply_text(f"✅ Found Audio URL: {audio_url}")
-    file_path = download_audio(audio_url, DOWNLOADS_FOLDER)
-    
-    if not file_path:
-        await update.message.reply_text("❌ Failed to download audio.")
-        return
-A    
+
+    # Download audio
+    audio_path = "downloads/podcast.mp3"
+    response = requests.get(audio_url)
+    with open(audio_path, "wb") as f:
+        f.write(response.content)
+
     await update.message.reply_text("✅ Download complete. Transcribing...")
-    transcript = transcribe_audio(file_path)
 
-    if not transcript:
-        await update.message.reply_text("❌ Transcription failed.")
-        return
-    
-    notion_url = create_notion_page(podcast_title, transcript)
-    
-    if notion_url:
-        await update.message.reply_text(f"✅ Notion Page Created: {notion_url}")
-    else:
-        await update.message.reply_text("❌ Failed to create Notion page.")
+    # Transcribe audio with OpenAI
+    with open(audio_path, "rb") as audio_file:
+        response = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
 
-# ✅ Register Handlers
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    transcription = response["text"]
+    await update.message.reply_text(f"📝 Transcription:\n\n{transcription[:4000]}")
 
-if __name__ == "__main__":
+    # Cleanup
+    os.remove(audio_path)
+
+
+def main():
+    """Main function to start the bot."""
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_audio))
+
     logger.info("🚀 Bot is starting...")
     app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
