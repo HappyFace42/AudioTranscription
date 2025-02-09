@@ -17,9 +17,8 @@ PORT = int(os.getenv("PORT", 8080))
 # ✅ **Initialize Flask**
 app = Flask(__name__)
 
-# ✅ **Initialize Telegram Application (FIXED)**
+# ✅ **Correct Telegram Bot Initialization (FIXED)**
 telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-telegram_app.initialize()  # 🔥 Fix: Ensure the bot is initialized
 
 # ✅ **Message Handler**
 async def handle_message(update: Update, context: CallbackContext) -> None:
@@ -48,13 +47,14 @@ def process_podcast_link(url, chat_id):
 
 # ✅ **Webhook Route (FIXED)**
 @app.route("/webhook", methods=["POST"])
-async def webhook():
+def webhook():
     """Receives updates from Telegram"""
     update = Update.de_json(request.get_json(), telegram_app.bot)
 
     logger.info(f"📬 Received Webhook Update: {update}")
 
-    await telegram_app.process_update(update)  # 🔥 Fix: Ensure async processing
+    telegram_app.initialize()  # 🔥 Fix: Ensure bot is initialized here
+    telegram_app.process_update(update)  # 🔥 Fix: Ensure sync execution
 
     return "OK", 200
 
