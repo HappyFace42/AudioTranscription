@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ✅ Load Telegram bot token from environment variable
+# ✅ Load Telegram bot token
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN is missing!")
@@ -23,7 +23,7 @@ if not TELEGRAM_TOKEN:
 # ✅ Initialize Flask app
 app = Flask(__name__)
 
-# ✅ Initialize Telegram Application (async-ready)
+# ✅ Initialize Telegram bot application
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 
@@ -50,7 +50,7 @@ async def handle_message(update: Update, context):
         await context.bot.send_message(chat_id=chat_id, text="❌ Invalid link! Please send a valid podcast URL.")
 
 
-# ✅ Add handlers to the Telegram bot
+# ✅ Add handlers
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -63,18 +63,17 @@ def home():
 
 
 @app.route("/webhook", methods=["POST"])
-async def webhook():
+def webhook():
     """Handle incoming Telegram updates via webhook"""
     try:
         update_data = request.get_json()
         logger.info(f"📬 Received Webhook Update: {update_data}")
 
         update = Update.de_json(update_data, telegram_app.bot)
-        
-        # ✅ Properly initialize bot before processing update
-        await telegram_app.initialize()
-        await telegram_app.process_update(update)
-        
+
+        # ✅ Use `asyncio.create_task()` to avoid event loop issues
+        asyncio.create_task(telegram_app.process_update(update))
+
         return "OK", 200
     except Exception as e:
         logger.error(f"❌ Webhook processing error: {e}")
@@ -83,8 +82,8 @@ async def webhook():
 
 ### 📌 SETUP & RUN BOT
 
-async def main():
-    """Start the bot"""
+async def setup_bot():
+    """Initialize and start the bot"""
     logger.info("🚀 Setting webhook if needed...")
 
     webhook_url = "https://audiotranscription-production.up.railway.app/webhook"
@@ -99,14 +98,15 @@ async def main():
     else:
         logger.error(f"❌ Failed to set webhook: {response.text}")
 
-    # ✅ Ensure application is initialized before processing requests
+    # ✅ Ensure application is initialized
     await telegram_app.initialize()
     logger.info("🚀 Bot is running with webhook on port 8080")
 
 
-if __name__ == "__main__":
-    # ✅ Start the bot asynchronously
-    asyncio.run(main())
+# ✅ Run bot asynchronously without `asyncio.run()`
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+loop.run_until_complete(setup_bot())
 
-    # ✅ Start Flask app
-    app.run(host="0.0.0.0", port=8080)
+# ✅ Start Flask app
+app.run(host="0.0.0.0", port=8080)
