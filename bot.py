@@ -1,7 +1,7 @@
 import os
 import logging
-import requests
 import asyncio
+import requests
 
 from flask import Flask, request
 from telegram import Update
@@ -26,7 +26,7 @@ app = Flask(__name__)
 # ✅ Initialize Telegram bot application
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-# ✅ Use an async event loop
+# ✅ Create event loop
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -39,7 +39,7 @@ async def start(update: Update, context):
 
 
 async def handle_message(update: Update, context):
-    """Handle messages from users"""
+    """Handle user messages"""
     text = update.message.text
     chat_id = update.message.chat_id
 
@@ -67,7 +67,7 @@ def home():
 
 
 @app.route("/webhook", methods=["POST"])
-def webhook():
+async def webhook():
     """Handle incoming Telegram updates via webhook"""
     try:
         update_data = request.get_json()
@@ -75,8 +75,8 @@ def webhook():
 
         update = Update.de_json(update_data, telegram_app.bot)
 
-        # ✅ FIXED: Use running event loop properly
-        loop.create_task(telegram_app.process_update(update))
+        # ✅ FIXED: Properly handle updates asynchronously
+        asyncio.create_task(telegram_app.process_update(update))
 
         return "OK", 200
     except Exception as e:
@@ -108,7 +108,8 @@ async def setup_bot():
 
 
 # ✅ Run bot setup in the background
-loop.create_task(setup_bot())
+asyncio.create_task(setup_bot())
 
 # ✅ Start Flask app
-app.run(host="0.0.0.0", port=8080)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
