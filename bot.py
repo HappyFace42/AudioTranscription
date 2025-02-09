@@ -1,69 +1,59 @@
 import os
 import logging
-import requests
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-# Configure Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ✅ Setup Logging
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-# 🔥 Load environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_TOKEN:
-    logger.error("❌ TELEGRAM_TOKEN is missing!")
+TOKEN = os.getenv("TELEGRAM_TOKEN")  # ✅ Ensure this is set
+if not TOKEN:
+    logging.error("❌ TELEGRAM_TOKEN is missing! Set it in Railway Variables.")
     exit(1)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    logger.error("⚠️ Warning: OPENAI_API_KEY is missing! Some features may not work.")
+# ✅ Initialize Bot
+telegram_app = Application.builder().token(TOKEN).build()
 
-WEBHOOK_URL = "https://audiotranscription-production.up.railway.app/webhook"
+# ✅ Define Command Handlers
+async def start(update: Update, context):
+    await update.message.reply_text("Hello! Send me a podcast link to transcribe.")
 
-# Flask Web Server
+async def process_message(update: Update, context):
+    text = update.message.text
+    logging.info(f"📥 Received message: {text}")
+    await update.message.reply_text(f"🎙️ Processing podcast: {text}")
+
+# ✅ Add Handlers
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
+
+# ✅ Initialize Flask Webhook
 app = Flask(__name__)
 
-# Telegram Bot Setup
-telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-
-# ✅ Set Webhook on Start
-async def set_webhook():
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={WEBHOOK_URL}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        logger.info(f"✅ Webhook set successfully: {WEBHOOK_URL}")
-    else:
-        logger.error(f"❌ Failed to set webhook: {response.json()}")
-
-# 📩 Handle Incoming Messages
-async def handle_message(update: Update, context):
-    user_text = update.message.text
-    logger.info(f"📥 Received message: {user_text}")
-
-    if user_text.startswith("http"):
-        await update.message.reply_text("🔄 Processing your podcast link...")
-
-        # Simulate processing...
-        await update.message.reply_text("✅ Transcription complete!")
-
-# �� Webhook Route
 @app.route("/webhook", methods=["POST"])
 async def webhook():
     try:
-        update = Update.de_json(request.get_json(), telegram_app.bot)
-        logger.info(f"📬 Received Webhook Update: {update}")
+        update = Update.de_json(request.json, telegram_app.bot)
+        logging.info(f"📬 Received Webhook Update: {update}")
 
-        await telegram_app.process_update(update)
+        await telegram_app.process_update(update)  # ✅ Ensure Async Processing
+
+        return "OK", 200
     except Exception as e:
-        logger.error(f"❌ Webhook processing error: {e}")
-        return "Internal Server Error", 500
-    return "OK", 200
+        logging.error(f"❌ Webhook processing error: {e}")
+        return "Error", 500
 
-# 🚀 Start Flask Server
+async def start_bot():
+    """ ✅ Initialize and Run Telegram Bot """
+    await telegram_app.initialize()  # ✅ Required Fix
+    await telegram_app.start()
+    logging.info("🚀 Telegram Bot is ready!")
+
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(set_webhook())
-
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run(host="0.0.0.0", port=8080)
+    asyncio.run(start_bot())  # ✅ Start the bot properly
+    app.run(host="0.0.0.0", port=8080)  # ✅ Webhook Server
