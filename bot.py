@@ -1,41 +1,44 @@
 import os
 import logging
 import asyncio
-import requests
-
 from flask import Flask, request
-from telegram import Update
+from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-# ✅ Enable logging
+# 🚀 Initialize Flask App
+app = Flask(__name__)
+
+# 🚀 Set up Logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ✅ Load Telegram bot token
+# 🚀 Load Environment Variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN is missing!")
-    raise ValueError("❌ TELEGRAM_BOT_TOKEN is missing!")
+    exit(1)
 
-# ✅ Initialize Flask app
-app = Flask(__name__)
-
-# ✅ Initialize Telegram bot application
+# 🚀 Initialize Telegram Bot
+bot = Bot(token=TELEGRAM_TOKEN)
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+# ✅ Ensure Bot is initialized
+async def setup_bot():
+    await telegram_app.initialize()
+    await telegram_app.bot.set_webhook("https://audiotranscription-production.up.railway.app/webhook")
+    logger.info("✅ Webhook set successfully")
 
-### 📌 BOT COMMAND HANDLERS
-
+# 🚀 Command: Start
 async def start(update: Update, context):
-    """Start command"""
-    await update.message.reply_text("👋 Hello! Send me a podcast link, and I'll transcribe it!")
+    """Handle /start command"""
+    await update.message.reply_text("👋 Hello! Send me a podcast URL to process.")
 
-
+# 🚀 Handle incoming messages
 async def handle_message(update: Update, context):
-    """Handle user messages"""
+    """Handle user messages and reply"""
     text = update.message.text
     chat_id = update.message.chat_id
 
@@ -43,25 +46,21 @@ async def handle_message(update: Update, context):
 
     if text.startswith("http"):
         try:
+            logger.info(f"📤 Sending processing message to {chat_id}")
             await context.bot.send_message(chat_id=chat_id, text="🎙️ Processing podcast: " + text)
+
+            # ✅ Ensure proper Telegram API request
+            response = await context.bot.send_message(chat_id=chat_id, text="✅ Message received!")
+
+            if response:
+                logger.info(f"📤 Message successfully sent to {chat_id}")
+
         except Exception as e:
             logger.error(f"❌ Failed to send message: {e}")
     else:
         await context.bot.send_message(chat_id=chat_id, text="❌ Invalid link! Please send a valid podcast URL.")
 
-
-# ✅ Add handlers
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-
-### 📌 WEBHOOK HANDLING
-
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ Bot is running!", 200
-
-
+# 🚀 Webhook Route
 @app.route("/webhook", methods=["POST"])
 async def webhook():
     """Handle incoming Telegram updates via webhook"""
@@ -69,45 +68,17 @@ async def webhook():
         update_data = request.get_json()
         logger.info(f"📬 Received Webhook Update: {update_data}")
 
-        update = Update.de_json(update_data, telegram_app.bot)
+        update = Update.de_json(update_data, bot)
 
-        # ✅ FIXED: Properly handle updates asynchronously
-        asyncio.create_task(telegram_app.process_update(update))
+        # ✅ FIXED: Properly process updates asynchronously
+        await telegram_app.process_update(update)
 
         return "OK", 200
     except Exception as e:
         logger.error(f"❌ Webhook processing error: {e}")
         return "Internal Server Error", 500
 
-
-### 📌 SETUP & RUN BOT
-
-async def setup_bot():
-    """Initialize and start the bot"""
-    logger.info("🚀 Setting webhook if needed...")
-
-    webhook_url = "https://audiotranscription-production.up.railway.app/webhook"
-
-    response = requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
-        json={"url": webhook_url}
-    )
-
-    if response.ok:
-        logger.info(f"✅ Webhook set successfully: {webhook_url}")
-    else:
-        logger.error(f"❌ Failed to set webhook: {response.text}")
-
-    # ✅ Ensure application is initialized
-    await telegram_app.initialize()
-    logger.info("🚀 Bot is running with webhook on port 8080")
-
-
-# ✅ FIXED: Properly run async setup inside event loop
+# 🚀 Main Entry Point
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(setup_bot())  # 🔥 This prevents "no running event loop" error
-    
-    # ✅ Start Flask app
+    asyncio.run(setup_bot())  # ✅ Properly initializes the bot
     app.run(host="0.0.0.0", port=8080)
