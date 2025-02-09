@@ -1,65 +1,49 @@
-import os
-import logging
 import asyncio
+import logging
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters
-from config import TELEGRAM_BOT_TOKEN, WEBHOOK_URL
-from telegram_handler import handle_message
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-# Logging setup
+# --- CONFIG VARIABLES ---
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+WEBHOOK_URL = "https://audiotranscription-production.up.railway.app/webhook"
+
+# --- SETUP LOGGING ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask app for webhook
+# --- FLASK APP ---
 app = Flask(__name__)
 
-# Telegram Bot Application
-telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+# --- TELEGRAM BOT SETUP ---
+telegram_app = Application.builder().token(TOKEN).build()
 
-@app.route("/webhook", methods=["POST"])
+@app.route('/webhook', methods=['POST'])
 async def webhook():
-    """Process incoming Telegram messages via webhook"""
-    try:
-        update = Update.de_json(request.get_json(), telegram_app.bot)
-        await telegram_app.process_update(update)
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"❌ Webhook processing error: {e}")
-        return "Internal Server Error", 500
-
-# Register handlers
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-async def set_webhook():
-    """Set webhook with retry handling"""
-    try:
-        await telegram_app.bot.set_webhook(url=WEBHOOK_URL)
-        logger.info(f"✅ Webhook set: {WEBHOOK_URL}")
-    except Exception as e:
-        logger.error(f"❌ Webhook setup failed: {e}")
-        await asyncio.sleep(5)
-        await set_webhook()
+    """Handles incoming Telegram updates via webhook."""
+    update = Update.de_json(request.get_json(), telegram_app.bot)
+    await telegram_app.process_update(update)
+    return "OK", 200
 
 async def start_bot():
-    """Start the bot using webhook mode"""
-    await set_webhook()
-    logger.info("🚀 Bot is running with webhook on port 8080")
-    await telegram_app.run_webhook(port=8080)
-
-if __name__ == "__main__":
+    """Starts the Telegram bot and sets the webhook."""
     logger.info("🚀 Starting bot...")
+    
+    # Set Webhook
+    await telegram_app.bot.set_webhook(url=WEBHOOK_URL)
+    logger.info(f"✅ Webhook set: {WEBHOOK_URL}")
 
+    # Run Flask server
+    app.run(host="0.0.0.0", port=8080)
+
+# --- MAIN ENTRY POINT ---
+if __name__ == "__main__":
     try:
-        loop = asyncio.get_running_loop()
-        logger.info("🔄 Event loop already running, scheduling bot...")
-        loop.create_task(start_bot())
-    except RuntimeError:
-        logger.info("🆕 No running event loop, creating a new one...")
+        asyncio.run(start_bot())  # Starts event loop properly
+    except RuntimeError as e:
+        logger.error(f"❌ RuntimeError: {e} - Trying alternative loop handling.")
+        
+        # Fallback: Create a new event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(start_bot())
-
-    # Start Flask server (run in a separate thread to avoid async conflicts)
-    from threading import Thread
-    Thread(target=lambda: app.run(host="0.0.0.0", port=8080)).start()
