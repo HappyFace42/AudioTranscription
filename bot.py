@@ -1,70 +1,37 @@
 import os
-import asyncio
 import logging
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from config import TELEGRAM_BOT_TOKEN, WEBHOOK_URL
+from telegram_handler import handle_message
 
-# ✅ Load Environment Variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("❌ TELEGRAM_BOT_TOKEN is missing!")
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# ✅ Initialize Logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# ✅ Flask Web Server
+# Flask app for webhook
 app = Flask(__name__)
 
-# ✅ Initialize Telegram Bot
+# Telegram Bot Application
 telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# 📝 Command: Start
-async def start(update: Update, context):
-    await update.message.reply_text("🤖 Bot is online! Send a podcast URL to process.")
-
-# 🎧 Message Handler
-async def handle_message(update: Update, context):
-    text = update.message.text
-    chat_id = update.message.chat_id
-    logging.info(f"📥 Received message from {chat_id}: {text}")
-
-    if text.startswith("http"):
-        response_message = f"🔗 Processing your link: {text}"
-    else:
-        response_message = "❌ Please send a valid URL."
-
-    await context.bot.send_message(chat_id=chat_id, text=response_message)
-
-# ✅ Register Handlers
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# 📡 Webhook Route
 @app.route("/webhook", methods=["POST"])
-def webhook():
-    """Receives updates from Telegram and processes them."""
+async def webhook():
+    """Process incoming Telegram messages via webhook"""
     update = Update.de_json(request.get_json(), telegram_app.bot)
-    logging.info(f"📬 Received Webhook Update: {update.to_dict()}")
-    
-    asyncio.create_task(telegram_app.process_update(update))  # Process update asynchronously
+    await telegram_app.process_update(update)
     return "OK", 200
 
-# ✅ Flask Web Server
-def run_flask():
-    """Runs the Flask server for webhook handling."""
-    app.run(host="0.0.0.0", port=8080)
+# Register handlers
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# ✅ Main Execution
+async def start_bot():
+    """Start the bot using webhook mode"""
+    await telegram_app.bot.set_webhook(url=WEBHOOK_URL)
+    await telegram_app.run_webhook(port=8080)
+
 if __name__ == "__main__":
-    logging.info("🚀 Starting bot...")
-
-    # Run Flask in a separate thread
-    from threading import Thread
-    flask_thread = Thread(target=run_flask)
-    flask_thread.start()
-
-    # Run Telegram webhook
-    loop = asyncio.get_event_loop()
-    loop.create_task(telegram_app.run_webhook(listen="0.0.0.0", port=8080, url_path="webhook"))
-    loop.run_forever()
+    logger.info("🚀 Starting bot...")
+    asyncio.run(start_bot())
