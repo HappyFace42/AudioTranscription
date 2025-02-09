@@ -134,15 +134,17 @@ def store_in_notion(text):
 
 
 async def setup_bot():
-    """Set up webhook & commands"""
+    """Initialize the bot and set the webhook."""
+    global telegram_app
+
+    # ✅ Initialize the bot properly
     await telegram_app.initialize()
-    await telegram_app.set_webhook(url="https://audiotranscription-production.up.railway.app/webhook")
 
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    logging.info("🚀 Telegram Bot Setup Completed!")
-
+    # ✅ Use bot.set_webhook() instead of Application.set_webhook()
+    webhook_url = "https://audiotranscription-production.up.railway.app/webhook"
+    await telegram_app.bot.set_webhook(url=webhook_url)
+    
+    print(f"✅ Webhook set successfully: {webhook_url}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
