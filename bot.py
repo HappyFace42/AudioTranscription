@@ -9,6 +9,8 @@ from transcriber import transcribe_audio
 from notion_helper import create_notion_page
 from config import TELEGRAM_BOT_TOKEN, DOWNLOADS_FOLDER
 
+WEBHOOK_URL = "audiotranscription-production.up.railway.app"
+
 # ✅ Logging Configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +38,7 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     if not file_path:
         await update.message.reply_text("❌ Failed to download audio.")
         return
-    
+A    
     await update.message.reply_text("✅ Download complete. Transcribing...")
     transcript = transcribe_audio(file_path)
 
