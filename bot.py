@@ -50,12 +50,12 @@ def process_podcast_link(url, chat_id):
         json={"chat_id": chat_id, "text": response_message},
     )
 
-# ✅ **Webhook Handler**
+# ✅ **Webhook Handler (FIXED)**
 @app.route("/webhook", methods=["POST"])
-def webhook():
+async def webhook():
     """Receives updates from Telegram and forwards them to the bot."""
     update = Update.de_json(request.get_json(), telegram_app.bot)
-    telegram_app.process_update(update)
+    await telegram_app.process_update(update)  # ✅ FIX: Await the coroutine
     return "OK", 200
 
 # ✅ **Set Webhook Function**
