@@ -26,6 +26,10 @@ app = Flask(__name__)
 # ✅ Initialize Telegram bot application
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+# ✅ Use an async event loop
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 
 ### 📌 BOT COMMAND HANDLERS
 
@@ -71,8 +75,8 @@ def webhook():
 
         update = Update.de_json(update_data, telegram_app.bot)
 
-        # ✅ FIXED: Run the async processing in the event loop
-        asyncio.run(telegram_app.process_update(update))
+        # ✅ FIXED: Use running event loop properly
+        loop.create_task(telegram_app.process_update(update))
 
         return "OK", 200
     except Exception as e:
@@ -103,8 +107,8 @@ async def setup_bot():
     logger.info("🚀 Bot is running with webhook on port 8080")
 
 
-# ✅ Run bot asynchronously
-asyncio.run(setup_bot())
+# ✅ Run bot setup in the background
+loop.create_task(setup_bot())
 
 # ✅ Start Flask app
 app.run(host="0.0.0.0", port=8080)
