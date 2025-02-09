@@ -1,0 +1,15 @@
+import requests
+
+def extract_audio_url(podcast_url):
+    headers = {"User-Agent": "Mozilla/5.0"}  # ✅ Helps avoid 400 error
+    response = requests.get(podcast_url, headers=headers)
+
+    if response.status_code != 200:
+        raise Exception(f"❌ Failed to fetch podcast info: {response.status_code} - {response.text}")
+
+    # Extract audio URL (ensure correct parsing)
+    extracted_url = response.url if response.ok else None
+    if not extracted_url:
+        raise Exception("❌ Failed to extract audio URL")
+
+    return extracted_url

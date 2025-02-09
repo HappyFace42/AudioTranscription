@@ -1,0 +1,27 @@
+import requests
+import json
+
+def extract_audio_url(podcast_id):
+    """Fetches the real audio URL from Apple's API."""
+    url = f"https://itunes.apple.com/lookup?id={podcast_id}&media=podcast&entity=podcastEpisode"
+    headers = {"Content-Type": "application/json"}
+
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"❌ Failed to fetch podcast info: {response.status_code}")
+
+    data = response.json()
+
+    # Extract the first episode's audio URL
+    for result in data.get("results", []):
+        if "episodeUrl" in result:
+            print(f"✅ Found Audio URL: {result['episodeUrl']}")
+            return result["episodeUrl"]
+
+    raise Exception("❌ No valid audio URL found in metadata.")
+
+# 🔥 Run the function (Make sure this is inside `extract_audio.py`)
+if __name__ == "__main__":
+    podcast_id = "1007344621"  # Replace with actual podcast ID
+    audio_url = extract_audio_url(podcast_id)
+    print(f"✅ Correct Audio URL: {audio_url}")

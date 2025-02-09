@@ -1,0 +1,44 @@
+import os
+import requests
+
+NOTION_API_KEY = os.getenv("NOTION_API_KEY")
+NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")  # ✅ Use Database ID instead of Page ID
+
+def create_notion_page(title, summary, full_transcription):
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    
+    data = {
+        "parent": {"database_id": NOTION_DATABASE_ID},  # ✅ Correctly define the database parent
+        "properties": {
+            "title": {
+                "title": [{"text": {"content": title}}]
+            },
+            "Summary": {
+                "rich_text": [{"text": {"content": summary[:2000]}]}  # Notion has a 2000-char limit
+            },
+        },
+        "children": [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"text": {"content": full_transcription[:2000]}}]  # Cut text to fit Notion limits
+                },
+            }
+        ]
+    }
+    
+    response = requests.post(url, headers=headers, json=data)
+    
+    if response.status_code == 200:
+        notion_page = response.json()
+        print(f"✅ Notion Page Created: {notion_page['url']}")
+        return notion_page
+    else:
+        print(f"❌ Failed to create Notion page: {response.status_code} - {response.text}")
+        return None
