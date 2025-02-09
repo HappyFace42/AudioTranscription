@@ -1,121 +1,95 @@
-import os
 import logging
-import requests
-import openai
-from flask import Flask, request
+import os
+import asyncio
+from flask import Flask, request, jsonify
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import requests
 
-# ✅ Load environment variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-WEBHOOK_URL = "https://audiotranscription-production.up.railway.app/webhook"
-
-openai.api_key = OPENAI_API_KEY
-
-# ✅ Setup logging
+# 🔥 Enable Logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ✅ Flask for webhook handling
+# 🔑 Load Environment Variables
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+WEBHOOK_URL = "https://audiotranscription-production.up.railway.app/webhook"
+
+# ✅ Validate API Keys
+if not TELEGRAM_TOKEN:
+    logger.error("❌ TELEGRAM_TOKEN is missing!")
+    exit(1)
+
+if not OPENAI_API_KEY:
+    logger.error("❌ OPENAI_API_KEY is missing!")
+    exit(1)
+
+# 🔥 Initialize Flask App
 app = Flask(__name__)
 
-# ✅ Telegram bot setup
-telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+# 🔥 Initialize Telegram Bot
+telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-async def start(update: Update, context):
-    """Start command handler."""
-    await update.message.reply_text("👋 Send me a podcast link, and I'll transcribe it!")
 
-async def process_audio(update: Update, context):
-    """Handles incoming audio links for transcription."""
-    text = update.message.text
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /start command."""
     chat_id = update.message.chat_id
-    logger.info(f"📥 Received message: {text}")
+    logger.info(f"✅ /start command from {chat_id}")
+    await context.bot.send_message(chat_id=chat_id, text="Hello! Send me a podcast link to transcribe.")
 
-    if text.startswith("http"):
-        await update.message.reply_text("🎙️ Processing podcast...")
-        audio_file = download_audio(text)
 
-        if audio_file:
-            await update.message.reply_text("✅ Download complete. Transcribing...")
-            transcription = await transcribe_audio(audio_file)
-            
-            if transcription:
-                await update.message.reply_text(f"📝 Transcription:\n{transcription[:4000]}")
-            else:
-                await update.message.reply_text("❌ Failed to transcribe the audio.")
-        else:
-            await update.message.reply_text("❌ Could not download the audio.")
-    else:
-        await update.message.reply_text("🚫 Please send a valid podcast link.")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming messages (URLs)."""
+    message_text = update.message.text
+    chat_id = update.message.chat_id
 
-def download_audio(url):
-    """Downloads the audio file from the given URL."""
-    try:
-        logger.info(f"⬇️ Downloading from: {url}")
-        response = requests.get(url, stream=True)
+    logger.info(f"📥 Received message from {chat_id}: {message_text}")
 
-        if response.status_code == 200:
-            file_path = "podcast.mp3"
-            with open(file_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            logger.info(f"✅ Download complete: {file_path}")
-            return file_path
-        else:
-            logger.error(f"❌ Failed to download audio: {response.status_code}")
-            return None
-    except Exception as e:
-        logger.error(f"❌ Download error: {e}")
-        return None
+    # ✅ Reply to the user
+    await context.bot.send_message(chat_id=chat_id, text="✅ Processing your request...")
 
-async def transcribe_audio(file_path):
-    """Transcribes the audio using OpenAI."""
-    logger.info(f"🎤 Sending audio for transcription: {file_path}")
-    try:
-        with open(file_path, "rb") as audio_file:
-            response = openai.Audio.transcribe("whisper-1", audio_file)
-            logger.info(f"📜 Transcription response: {response}")
-            return response["text"]
-    except Exception as e:
-        logger.error(f"❌ Transcription failed: {e}")
-        return None
+    # 🔥 Process OpenAI API Call (example placeholder)
+    response_text = f"🔊 Received podcast link: {message_text}"
+    await context.bot.send_message(chat_id=chat_id, text=response_text)
+
+
+# ✅ Register Handlers
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
 
 @app.route("/webhook", methods=["POST"])
 async def webhook():
-    """Receives webhook updates from Telegram."""
+    """Handle incoming Telegram Webhook updates."""
     try:
-        update = Update.de_json(request.get_json(), telegram_app.bot)
+        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
         logger.info(f"📬 Received Webhook Update: {update}")
 
-        # 🔥 Ensure the bot is initialized before processing updates
-        if not telegram_app.running:
-            await telegram_app.initialize()
+        await telegram_app.process_update(update)  # ✅ Await process_update
 
-        await telegram_app.process_update(update)  # ✅ Now properly awaited
-        return "OK"
+        return jsonify({"status": "success"}), 200
     except Exception as e:
-        logger.error(f"❌ Webhook processing error: {e}")
-        return "Error", 500
+        logger.error(f"❌ Webhook processing error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-def set_webhook():
-    """Sets the webhook for Telegram bot."""
-    logger.info("🚀 Setting webhook if needed...")
-    response = requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook",
-        json={"url": WEBHOOK_URL}
-    )
-    result = response.json()
-    if result.get("ok"):
+
+async def set_webhook():
+    """Set Telegram Webhook."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
+    response = requests.post(url, json={"url": WEBHOOK_URL})
+
+    if response.status_code == 200:
         logger.info(f"✅ Webhook set successfully: {WEBHOOK_URL}")
     else:
-        logger.error(f"❌ Failed to set webhook: {result}")
+        logger.error(f"❌ Failed to set webhook: {response.text}")
+
 
 if __name__ == "__main__":
-    set_webhook()
+    logger.info("🚀 Setting webhook if needed...")
+    asyncio.run(set_webhook())
+
     logger.info("🚀 Bot is running with webhook on port 8080")
     app.run(host="0.0.0.0", port=8080)
