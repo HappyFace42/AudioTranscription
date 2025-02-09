@@ -2,8 +2,49 @@ import os
 import logging
 import requests
 from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
+from flask import Flask
+from flask import request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask
+from flask import request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
+from flask import Flask, request
+from flask import Response
+from flask import jsonify
+from flask import current_app
 
 # 🚀 **Logging Setup**
 logging.basicConfig(
@@ -52,10 +93,14 @@ def process_podcast_link(url, chat_id):
 
 # ✅ **Webhook Handler (FIXED)**
 @app.route("/webhook", methods=["POST"])
-async def webhook():
+def webhook():
     """Receives updates from Telegram and forwards them to the bot."""
     update = Update.de_json(request.get_json(), telegram_app.bot)
-    await telegram_app.process_update(update)  # ✅ FIX: Await the coroutine
+    
+    # ✅ FIX: Convert async to sync
+    from flask import current_app
+    current_app.ensure_sync(telegram_app.process_update)(update)
+    
     return "OK", 200
 
 # ✅ **Set Webhook Function**
